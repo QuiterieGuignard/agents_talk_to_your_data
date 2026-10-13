@@ -1,66 +1,153 @@
 id,level,question,mode,passed,status,latency_s,generated_sql,error
-1,easy,How many sellers are on the marketplace?,without_glossary,True,PASS,1801.89,"SELECT COUNT(seller_id) AS total_sellers
-FROM sellers;",
-2,easy,How many products are in the catalog?,without_glossary,False,ERROR,44.74,,[Errno 11001] getaddrinfo failed
-3,easy,Which payment type is used most often?,without_glossary,False,ERROR,33.8,,[Errno 11001] getaddrinfo failed
-4,easy,How many distinct customers does Olist have?,without_glossary,True,PASS,222.9,"SELECT COUNT(DISTINCT customer_unique_id) AS distinct_customers
-FROM customers;",
-5,easy,What is the average review score?,without_glossary,True,PASS,44.12,SELECT AVG(review_score) AS average_review_score FROM reviews;,
-6,easy,"Which 5 states have the most customers, and how many customers does each have?",without_glossary,False,FAIL,36.19,"SELECT customer_state, COUNT(customer_id) AS customer_count
+1,easy,How many sellers are on the marketplace?,without_glossary,True,PASS,0.51,SELECT COUNT(*) AS seller_count FROM sellers LIMIT 50,
+2,easy,How many products are in the catalog?,without_glossary,True,PASS,0.47,SELECT COUNT(*) AS product_count FROM products LIMIT 50,
+3,easy,Which payment type is used most often?,without_glossary,True,PASS,0.42,"SELECT payment_type, COUNT(*) as count FROM payments GROUP BY payment_type ORDER BY count DESC LIMIT 1",
+4,easy,How many distinct customers does Olist have?,without_glossary,True,PASS,0.35,SELECT COUNT(DISTINCT customer_unique_id) FROM customers LIMIT 50,
+5,easy,What is the average review score?,without_glossary,True,PASS,0.34,SELECT AVG(review_score) AS average_review_score FROM reviews LIMIT 50,
+6,easy,"Which 5 states have the most customers, and how many customers does each have?",without_glossary,False,FAIL,0.4,"SELECT customer_state, COUNT(*) as customer_count
 FROM customers
 GROUP BY customer_state
 ORDER BY customer_count DESC
-LIMIT 5;",
-7,easy,How many different product categories are there?,without_glossary,True,PASS,7.59,"SELECT COUNT(DISTINCT product_category_name) AS category_count
-FROM products;",
-8,easy,What is the average number of installments for credit card payments?,without_glossary,True,PASS,2.88,"SELECT AVG(payment_installments) AS avg_installments
-FROM payments
-WHERE payment_type = 'credit_card'",
-9,business,What is the total revenue?,without_glossary,False,FAIL,32.9,SELECT SUM(payment_value) AS total_revenue FROM payments;,
-10,business,What was the revenue in 2017?,without_glossary,False,FAIL,62.8,"SELECT SUM(payment_value) AS revenue
-FROM payments
-JOIN orders ON payments.order_id = orders.order_id
-WHERE EXTRACT(YEAR FROM orders.order_purchase_timestamp) = 2017",
-11,business,What is the average order value?,without_glossary,False,FAIL,32.75,"SELECT AVG(order_total) AS average_order_value
-FROM (
-    SELECT order_id, SUM(payment_value) AS order_total
-    FROM payments
-    GROUP BY order_id
-)",
-12,business,How many orders have been placed?,without_glossary,False,FAIL,11.83,SELECT COUNT(*) FROM orders;,
-13,business,What is the repeat purchase rate?,without_glossary,False,FAIL,8.28,"WITH customer_orders AS (
-    SELECT 
-        c.customer_unique_id,
-        COUNT(DISTINCT o.order_id) AS order_count
-    FROM customers c
-    JOIN orders o ON c.customer_id = o.customer_id
-    GROUP BY c.customer_unique_id
-)
-SELECT 
-    COUNT(CASE WHEN order_count > 1 THEN 1 END) * 100.0 / COUNT(*) AS repeat_purchase_rate
-FROM customer_orders;",
-14,business,What share of delivered orders arrived late?,without_glossary,False,FAIL,64.04,"SELECT 
-    COUNT(CASE WHEN order_delivered_customer_date > order_estimated_delivery_date THEN 1 END) * 1.0 / COUNT(*) AS late_delivery_share
+LIMIT 5",
+7,easy,How many different product categories are there?,without_glossary,True,PASS,0.42,SELECT COUNT(DISTINCT product_category_name) FROM products,
+8,easy,What is the average number of installments for credit card payments?,without_glossary,True,PASS,0.43,SELECT AVG(payment_installments) AS avg_installments FROM payments WHERE payment_type = 'credit_card' LIMIT 50,
+9,business,What is the total revenue?,without_glossary,False,FAIL,0.39,SELECT SUM(payment_value) AS total_revenue FROM payments LIMIT 50,
+10,business,What was the revenue in 2017?,without_glossary,False,FAIL,0.66,SELECT SUM(oi.price + oi.freight_value) AS revenue_2017 FROM order_items oi JOIN orders o ON oi.order_id = o.order_id WHERE EXTRACT(YEAR FROM o.order_purchase_timestamp) = 2017 LIMIT 50,
+11,business,What is the average order value?,without_glossary,False,FAIL,0.45,SELECT AVG(price + freight_value) AS average_order_value FROM order_items LIMIT 50,
+12,business,How many orders have been placed?,without_glossary,False,FAIL,0.33,SELECT COUNT(*) AS total_orders FROM orders LIMIT 50,
+13,business,What is the repeat purchase rate?,without_glossary,False,FAIL,0.81,"SELECT
+    COUNT(DISTINCT o1.customer_id) * 100.0 / NULLIF(COUNT(DISTINCT o1.customer_id), 0) AS repeat_purchase_rate
+FROM
+    orders o1
+WHERE
+    EXISTS (
+        SELECT 1
+        FROM orders o2
+        WHERE o2.customer_id = o1.customer_id
+        AND o2.order_id != o1.order_id
+    )
+LIMIT 50",
+14,business,What share of delivered orders arrived late?,without_glossary,False,FAIL,0.59,"SELECT
+    COUNT(CASE WHEN order_delivered_customer_date > order_estimated_delivery_date THEN 1 END) * 100.0 / COUNT(*) AS late_delivery_percentage
 FROM orders
-WHERE order_status = 'delivered' 
-  AND order_delivered_customer_date IS NOT NULL;",
-15,business,What is the median delivery time in days?,without_glossary,True,PASS,9.73,"SELECT MEDIAN(DATE_DIFF('day', order_purchase_timestamp, order_delivered_customer_date)) AS median_delivery_time_days
-FROM orders
-WHERE order_delivered_customer_date IS NOT NULL;",
-16,business,What percentage of reviews are negative?,without_glossary,True,PASS,35.67,"SELECT 
-    100.0 * COUNT(CASE WHEN review_score <= 2 THEN 1 END) / COUNT(*) AS negative_review_percentage
-FROM reviews",
-17,business,What is the revenue generated by customers in the South region?,without_glossary,False,ERROR,1928.57,,"Error calling model 'gemini-3.8-flash' (RESOURCE_EXHAUSTED): 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To mon"
-18,business,How many orders were placed last month?,without_glossary,False,ERROR,35.24,,"Error calling model 'gemini-3.8-flash' (RESOURCE_EXHAUSTED): 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To mon"
-19,business,What are the top 5 product categories by revenue?,without_glossary,False,ERROR,36.44,,"Error calling model 'gemini-3.8-flash' (RESOURCE_EXHAUSTED): 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To mon"
-20,business,What is the average order value for customers in the state of São Paulo?,without_glossary,False,ERROR,35.08,,"Error calling model 'gemini-3.8-flash' (RESOURCE_EXHAUSTED): 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To mon"
-21,combined,What is the late delivery rate in the Northeast region?,without_glossary,False,ERROR,35.87,,"Error calling model 'gemini-3.8-flash' (RESOURCE_EXHAUSTED): 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To mon"
-22,combined,"Which customer state has the highest late delivery rate, and what is that rate?",without_glossary,False,ERROR,34.55,,"Error calling model 'gemini-3.8-flash' (RESOURCE_EXHAUSTED): 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To mon"
-23,combined,What share of delivered orders containing at least one health_beauty product arrived late?,without_glossary,False,ERROR,34.51,,"Error calling model 'gemini-3.8-flash' (RESOURCE_EXHAUSTED): 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To mon"
-24,combined,What is the average review score of orders that were delivered late?,without_glossary,False,ERROR,35.07,,"Error calling model 'gemini-3.8-flash' (RESOURCE_EXHAUSTED): 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To mon"
-25,combined,"Among product categories with at least 100 reviews, which 5 have the highest negative review rate?",without_glossary,False,ERROR,34.64,,"Error calling model 'gemini-3.8-flash' (RESOURCE_EXHAUSTED): 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To mon"
-26,combined,What was the revenue in March 2018?,without_glossary,False,ERROR,36.3,,"Error calling model 'gemini-3.8-flash' (RESOURCE_EXHAUSTED): 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To mon"
-27,combined,How many customers in the South region have ordered more than once?,without_glossary,False,ERROR,36.94,,"Error calling model 'gemini-3.8-flash' (RESOURCE_EXHAUSTED): 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To mon"
-28,combined,What is the average delivery time in days for customers in the North region?,without_glossary,False,ERROR,34.7,,"Error calling model 'gemini-3.8-flash' (RESOURCE_EXHAUSTED): 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To mon"
-29,combined,What was the revenue of the health_beauty category in 2018?,without_glossary,False,ERROR,35.83,,"Error calling model 'gemini-3.8-flash' (RESOURCE_EXHAUSTED): 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To mon"
-30,combined,Which seller state generates the most revenue?,without_glossary,False,ERROR,35.6,,"Error calling model 'gemini-3.8-flash' (RESOURCE_EXHAUSTED): 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To mon"
+WHERE order_status = 'delivered'
+LIMIT 50",
+15,business,What is the median delivery time in days?,without_glossary,True,PASS,0.99,"SELECT PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY DATEDIFF('day', o.order_purchase_timestamp, o.order_delivered_customer_date)) AS median_delivery_time_days
+FROM orders o
+WHERE o.order_delivered_customer_date IS NOT NULL
+LIMIT 50",
+16,business,What percentage of reviews are negative?,without_glossary,True,PASS,0.48,SELECT (COUNT(CASE WHEN review_score < 3 THEN 1 END) * 100.0 / COUNT(*)) AS negative_review_percentage FROM reviews LIMIT 50,
+17,business,What is the revenue generated by customers in the South region?,without_glossary,False,FAIL,0.83,"SELECT SUM(oi.price + oi.freight_value) AS total_revenue
+FROM order_items oi
+JOIN orders o ON oi.order_id = o.order_id
+JOIN customers c ON o.customer_id = c.customer_id
+WHERE c.customer_state IN ('SP', 'RJ', 'MG', 'ES', 'PR', 'SC', 'RS')
+LIMIT 50",
+18,business,How many orders were placed last month?,without_glossary,True,PASS,0.58,"SELECT COUNT(*) AS order_count FROM orders WHERE order_purchase_timestamp >= DATE_TRUNC('month', CURRENT_DATE - INTERVAL 1 MONTH) AND order_purchase_timestamp < DATE_TRUNC('month', CURRENT_DATE)",
+19,business,What are the top 5 product categories by revenue?,without_glossary,False,FAIL,0.81,"SELECT
+    ct.product_category_name_english AS category,
+    SUM(oi.price) AS revenue
+FROM
+    order_items oi
+JOIN
+    products p ON oi.product_id = p.product_id
+JOIN
+    category_translation ct ON p.product_category_name = ct.product_category_name
+GROUP BY
+    ct.product_category_name_english
+ORDER BY
+    revenue DESC
+LIMIT 5",
+20,business,What is the average order value for customers in the state of São Paulo?,without_glossary,False,FAIL,0.75,"SELECT AVG(oi.price + oi.freight_value) AS avg_order_value
+FROM order_items oi
+JOIN orders o ON oi.order_id = o.order_id
+JOIN customers c ON o.customer_id = c.customer_id
+WHERE c.customer_state = 'SP'
+LIMIT 50",
+21,combined,What is the late delivery rate in the Northeast region?,without_glossary,False,FAIL,0.73,"SELECT
+    COUNT(CASE WHEN o.order_delivered_customer_date > o.order_estimated_delivery_date THEN 1 END) * 100.0 /
+    COUNT(*) AS late_delivery_rate
+FROM orders o
+JOIN customers c ON o.customer_id = c.customer_id
+WHERE c.customer_state IN ('MA', 'CT', 'ME', 'NH', 'RI', 'VT', 'NJ', 'NY', 'PA')
+LIMIT 50",
+22,combined,"Which customer state has the highest late delivery rate, and what is that rate?",without_glossary,False,FAIL,1.15,"SELECT
+    c.customer_state,
+    SUM(CASE WHEN o.order_delivered_customer_date > o.order_estimated_delivery_date THEN 1 ELSE 0 END) * 100.0 / COUNT(*) AS late_delivery_rate
+FROM
+    orders o
+JOIN
+    customers c ON o.customer_id = c.customer_id
+WHERE
+    o.order_delivered_customer_date IS NOT NULL
+    AND o.order_estimated_delivery_date IS NOT NULL
+GROUP BY
+    c.customer_state
+ORDER BY
+    late_delivery_rate DESC
+LIMIT 1",
+23,combined,What share of delivered orders containing at least one health_beauty product arrived late?,without_glossary,False,FAIL,1.42,"SELECT
+    COUNT(CASE WHEN o.order_delivered_customer_date > o.order_estimated_delivery_date THEN 1 END) * 100.0 / COUNT(*) AS late_delivery_percentage
+FROM orders o
+JOIN order_items oi ON o.order_id = oi.order_id
+JOIN products p ON oi.product_id = p.product_id
+JOIN category_translation ct ON p.product_category_name = ct.product_category_name
+WHERE o.order_status = 'delivered'
+AND ct.product_category_name_english = 'health_beauty'
+LIMIT 50",
+24,combined,What is the average review score of orders that were delivered late?,without_glossary,False,FAIL,0.58,"SELECT AVG(r.review_score) AS avg_review_score
+FROM reviews r
+JOIN orders o ON r.order_id = o.order_id
+WHERE o.order_delivered_customer_date > o.order_estimated_delivery_date
+LIMIT 50",
+25,combined,"Among product categories with at least 100 reviews, which 5 have the highest negative review rate?",without_glossary,False,FAIL,1.34,"SELECT
+    ct.product_category_name_english AS category,
+    COUNT(r.review_id) AS total_reviews,
+    SUM(CASE WHEN r.review_score <= 2 THEN 1 ELSE 0 END) AS negative_reviews,
+    ROUND(SUM(CASE WHEN r.review_score <= 2 THEN 1 ELSE 0 END) * 100.0 / COUNT(r.review_id), 2) AS negative_review_rate
+FROM
+    reviews r
+JOIN
+    orders o ON r.order_id = o.order_id
+JOIN
+    order_items oi ON o.order_id = oi.order_id
+JOIN
+    products p ON oi.product_id = p.product_id
+JOIN
+    category_translation ct ON p.product_category_name = ct.product_category_name
+GROUP BY
+    ct.product_category_name_english
+HAVING
+    COUNT(r.review_id) >= 100
+ORDER BY
+    negative_review_rate DESC
+LIMIT 5",
+26,combined,What was the revenue in March 2018?,without_glossary,False,FAIL,0.66,SELECT SUM(oi.price + oi.freight_value) AS revenue FROM order_items oi JOIN orders o ON oi.order_id = o.order_id WHERE EXTRACT(MONTH FROM o.order_purchase_timestamp) = 3 AND EXTRACT(YEAR FROM o.order_purchase_timestamp) = 2018,
+27,combined,How many customers in the South region have ordered more than once?,without_glossary,False,FAIL,0.72,"SELECT COUNT(DISTINCT c.customer_id) AS customer_count
+FROM customers c
+JOIN orders o ON c.customer_id = o.customer_id
+WHERE c.customer_state IN ('SP', 'RJ', 'MG', 'ES')
+GROUP BY c.customer_id
+HAVING COUNT(o.order_id) > 1
+LIMIT 50",
+28,combined,What is the average delivery time in days for customers in the North region?,without_glossary,False,ERROR,0.9,"SELECT AVG(JULIANDAY(o.order_delivered_customer_date) - JULIANDAY(o.order_purchase_timestamp)) AS avg_delivery_time_days
+FROM orders o
+JOIN customers c ON o.customer_id = c.customer_id
+WHERE c.customer_state IN ('AC', 'AM', 'AP', 'PA', 'RO', 'RR', 'TO')
+AND o.order_delivered_customer_date IS NOT NULL
+LIMIT 50","Catalog Error: Scalar Function with name julianday does not exist!
+Did you mean ""julian""?"
+29,combined,What was the revenue of the health_beauty category in 2018?,without_glossary,False,FAIL,0.95,"SELECT SUM(oi.price) AS revenue
+FROM order_items oi
+JOIN products p ON oi.product_id = p.product_id
+JOIN category_translation ct ON p.product_category_name = ct.product_category_name
+JOIN orders o ON oi.order_id = o.order_id
+WHERE ct.product_category_name_english = 'health_beauty'
+AND o.order_purchase_timestamp >= '2018-01-01'
+AND o.order_purchase_timestamp < '2019-01-01'",
+30,combined,Which seller state generates the most revenue?,without_glossary,True,PASS,1.2,"SELECT seller_state, SUM(oi.price + oi.freight_value) AS total_revenue
+FROM order_items oi
+JOIN sellers s ON oi.seller_id = s.seller_id
+GROUP BY seller_state
+ORDER BY total_revenue DESC
+LIMIT 1",

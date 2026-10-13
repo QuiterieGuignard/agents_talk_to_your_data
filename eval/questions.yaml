@@ -164,11 +164,16 @@
   level: business
   question: How many orders were placed last month?
   gold_sql: |
-    WITH latest_month AS (
-        SELECT DATE_TRUNC('month', MAX(order_purchase_timestamp)) AS month FROM orders
+    WITH monthly_orders AS (
+        SELECT DATE_TRUNC('month', order_purchase_timestamp) AS month, COUNT(*) AS nb_orders
+        FROM orders
+        GROUP BY month
+    ),
+    last_complete_month AS (
+        SELECT MAX(month) AS month FROM monthly_orders WHERE nb_orders >= 1000
     )
     SELECT COUNT(DISTINCT o.order_id) AS nb_orders
-    FROM orders o, latest_month m
+    FROM orders o, last_complete_month m
     WHERE DATE_TRUNC('month', o.order_purchase_timestamp) = m.month
       AND o.order_status NOT IN ('canceled', 'unavailable')
 

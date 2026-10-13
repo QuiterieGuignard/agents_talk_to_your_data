@@ -1,10 +1,17 @@
-"""Text-to-SQL v1: natural-language question -> SQL query -> result."""
+"""Text-to-SQL v1: natural-language question -> SQL query -> result.
+
+Usage (from the project root):
+    python src/text_to_sql.py                                   # 3 test questions, without glossary
+    python src/text_to_sql.py --glossary                        # 3 test questions, with glossary
+    python src/text_to_sql.py --glossary --question "..."       # your own question
+"""
+import argparse
 from pathlib import Path
 
 import duckdb
 from dotenv import load_dotenv
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_mistralai import ChatMistralAI
 
 load_dotenv()
 
@@ -12,7 +19,7 @@ ROOT = Path(__file__).resolve().parent.parent
 DB_PATH = ROOT / "data" / "olist.duckdb"
 KNOWLEDGE_DIR = ROOT / "knowledge"
 
-llm = ChatGoogleGenerativeAI(model="gemini-3.8-flash", temperature=0)
+llm = ChatMistralAI(model="mistral-medium-latest", temperature=0, max_retries=2)
 
 
 def get_schema(con):
@@ -46,7 +53,8 @@ Database schema:
 Rules:
 - Answer ONLY with the SQL query, with no explanation and no markdown fences.
 - Only write SELECT queries (read-only).
-- Limit results to 50 rows maximum."""),
+- Limit results to 50 rows maximum.
+- When the question asks "how many", return a single number. If you need to group first, do it in a CTE (WITH ...) and count its rows in the final SELECT."""),
     ("human", "{question}"),
 ])
 
@@ -61,7 +69,7 @@ def clean_sql(text):
 
 
 def generate_sql(question, con, with_glossary=False):
-    """Ask Gemini to write the SQL query that answers the question."""
+    """Ask the LLM to write the SQL query that answers the question."""
     knowledge = "Business documentation:\n" + load_knowledge() if with_glossary else ""
     chain = PROMPT | llm
     response = chain.invoke({
@@ -73,22 +81,24 @@ def generate_sql(question, con, with_glossary=False):
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Ask a question to the database in natural language.")
+    parser.add_argument("--glossary", action="store_true", help="give the business glossary to the LLM")
+    parser.add_argument("--question", help="question to ask (otherwise, runs the default test questions)")
+    args = parser.parse_args()
+
     con = duckdb.connect(str(DB_PATH), read_only=True)
 
-    questions = [
+    questions = [args.question] if args.question else [
         "How many distinct customers does Olist have?",
         "What percentage of customers ordered more than once?",
         "What is the total revenue?",
     ]
 
-    for with_glossary in [False, True]:
-        print("\n" + "=" * 70)
-        print("WITH GLOSSARY" if with_glossary else "WITHOUT GLOSSARY")
-        print("=" * 70)
-        for question in questions:
-            sql = generate_sql(question, con, with_glossary=with_glossary)
-            print(f"\nQuestion: {question}\nSQL:\n{sql}")
-            try:
-                print("Result:\n", con.sql(sql).df())
-            except Exception as error:
-                print("ERROR:", error)
+    print("WITH GLOSSARY" if args.glossary else "WITHOUT GLOSSARY")
+    for question in questions:
+        sql = generate_sql(question, con, with_glossary=args.glossary)
+        print(f"\nQuestion: {question}\nSQL:\n{sql}")
+        try:
+            print("Result:\n", con.sql(sql).df())
+        except Exception as error:
+            print("ERROR:", error)
