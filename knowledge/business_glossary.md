@@ -217,14 +217,17 @@ WHERE DATE_TRUNC('month', o.order_purchase_timestamp) = m.month
 ```
 
 Reference SQL (revenue of the current month, "this month"):
+Start FROM the period and LEFT JOIN the orders, so that the month is always returned, with a revenue of 0 if there are no sales.
 ```sql
 WITH current_month AS (
     SELECT DATE_TRUNC('month', MAX(order_purchase_timestamp)) AS month FROM orders
 )
-SELECT SUM(i.price) AS revenue
-FROM orders o
-JOIN order_items i ON o.order_id = i.order_id
-CROSS JOIN current_month m
-WHERE DATE_TRUNC('month', o.order_purchase_timestamp) = m.month
-  AND o.order_status = 'delivered'
+SELECT m.month,
+       COALESCE(SUM(i.price), 0) AS revenue
+FROM current_month m
+LEFT JOIN orders o
+       ON DATE_TRUNC('month', o.order_purchase_timestamp) = m.month
+      AND o.order_status = 'delivered'
+LEFT JOIN order_items i ON o.order_id = i.order_id
+GROUP BY m.month
 ```

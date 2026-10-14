@@ -54,6 +54,7 @@ Rules:
 - Answer ONLY with the SQL query, with no explanation and no markdown fences.
 - Only write SELECT queries (read-only).
 - Limit results to 50 rows maximum.
+- When the question refers to a period (last month, this month, recently, a year...), add the period as an extra column in the result (e.g. the month), so that the answer can state it. Take this column from the CTE that defines the period (start FROM the period and LEFT JOIN the data), so that it is filled even if no rows match.- When a sum or a count may cover no rows (e.g. a period with no sales), use COALESCE(SUM(...), 0) so that the result is 0 instead of NULL.
 - When the question asks "how many", return a single number. If you need to group first, do it in a CTE (WITH ...) and count its rows in the final SELECT."""),
     ("human", "{question}"),
 ])
