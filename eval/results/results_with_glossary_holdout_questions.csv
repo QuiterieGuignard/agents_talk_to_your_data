@@ -1,0 +1,117 @@
+id,level,question,mode,passed,status,latency_s,attempts,generated_sql,error
+101,easy,How many sellers are located in the state of Rio de Janeiro?,with_glossary,True,PASS,1.4,1,"SELECT COUNT(DISTINCT seller_id) AS nb_sellers
+FROM sellers
+WHERE seller_state = 'RJ'",
+102,easy,What share of payments are made with a boleto?,with_glossary,True,PASS,1.56,1,"WITH total_payments AS (
+    SELECT COUNT(*) AS total FROM payments
+),
+boleto_payments AS (
+    SELECT COUNT(*) AS boleto FROM payments WHERE payment_type = 'boleto'
+)
+SELECT b.boleto * 1.0 / t.total AS boleto_share
+FROM total_payments t, boleto_payments b",
+103,business,What was the average order value in 2017?,with_glossary,True,PASS,1.91,1,"WITH delivered_orders_2017 AS (
+    SELECT o.order_id
+    FROM orders o
+    WHERE o.order_status = 'delivered'
+      AND DATE_TRUNC('year', o.order_purchase_timestamp) = DATE_TRUNC('year', MAKE_TIMESTAMP(2017, 1, 1, 0, 0, 0))
+)
+SELECT SUM(i.price) / COUNT(DISTINCT o.order_id) AS average_order_value
+FROM delivered_orders_2017 d
+JOIN orders o ON d.order_id = o.order_id
+JOIN order_items i ON o.order_id = i.order_id",
+104,business,How many orders were canceled in 2018?,with_glossary,True,PASS,1.51,1,"WITH orders_2018 AS (
+    SELECT order_id
+    FROM orders
+    WHERE order_status = 'canceled'
+      AND EXTRACT(YEAR FROM order_purchase_timestamp) = 2018
+)
+SELECT COUNT(*) AS nb_canceled_orders
+FROM orders_2018",
+105,combined,What is the median delivery time in days for customers in the state of Rio de Janeiro?,with_glossary,True,PASS,2.22,1,"WITH delivery_times AS (
+    SELECT DATE_DIFF('day', o.order_purchase_timestamp, o.order_delivered_customer_date) AS delivery_days
+    FROM orders o
+    JOIN customers c ON o.customer_id = c.customer_id
+    WHERE o.order_status = 'delivered'
+      AND o.order_delivered_customer_date IS NOT NULL
+      AND c.customer_state = 'RJ'
+)
+SELECT MEDIAN(delivery_days) AS median_delivery_days
+FROM delivery_times",
+106,combined,What share of delivered orders containing at least one bed_bath_table product arrived late?,with_glossary,True,PASS,2.08,1,"WITH delivered_orders AS (
+    SELECT o.order_id
+    FROM orders o
+    WHERE o.order_status = 'delivered'
+      AND o.order_delivered_customer_date IS NOT NULL
+),
+bed_bath_table_orders AS (
+    SELECT DISTINCT i.order_id
+    FROM order_items i
+    JOIN products p ON i.product_id = p.product_id
+    LEFT JOIN category_translation t ON p.product_category_name = t.product_category_name
+    WHERE t.product_category_name_english = 'bed_bath_table'
+)
+SELECT
+    AVG(CASE WHEN CAST(o.order_delivered_customer_date AS DATE) > CAST(o.order_estimated_delivery_date AS DATE)
+             THEN 1.0 ELSE 0.0 END) AS late_delivery_rate
+FROM orders o
+WHERE o.order_id IN (SELECT order_id FROM delivered_orders)
+  AND o.order_id IN (SELECT order_id FROM bed_bath_table_orders)",
+107,combined,What was the revenue in the Southeast region last month?,with_glossary,True,PASS,2.53,1,"WITH monthly_orders AS (
+    SELECT DATE_TRUNC('month', order_purchase_timestamp) AS month, COUNT(*) AS nb_orders
+    FROM orders
+    GROUP BY month
+),
+last_complete_month AS (
+    SELECT MAX(month) AS month FROM monthly_orders WHERE nb_orders >= 1000
+),
+southeast_states AS (
+    SELECT unnest(['SP', 'RJ', 'MG', 'ES']) AS state
+)
+SELECT m.month,
+       COALESCE(SUM(i.price), 0) AS revenue
+FROM last_complete_month m
+LEFT JOIN orders o ON DATE_TRUNC('month', o.order_purchase_timestamp) = m.month
+LEFT JOIN order_items i ON o.order_id = i.order_id
+LEFT JOIN customers c ON o.customer_id = c.customer_id
+LEFT JOIN southeast_states s ON c.customer_state = s.state
+WHERE o.order_status = 'delivered'
+  AND c.customer_state IN ('SP', 'RJ', 'MG', 'ES')
+GROUP BY m.month",
+108,combined,Which product category generated the most revenue in 2017?,with_glossary,True,PASS,2.21,1,"WITH revenue_2017 AS (
+    SELECT
+        COALESCE(t.product_category_name_english, p.product_category_name) AS category,
+        SUM(i.price) AS revenue
+    FROM orders o
+    JOIN order_items i ON o.order_id = i.order_id
+    JOIN products p ON i.product_id = p.product_id
+    LEFT JOIN category_translation t ON p.product_category_name = t.product_category_name
+    WHERE o.order_status = 'delivered'
+      AND DATE_TRUNC('year', o.order_purchase_timestamp) = DATE_TRUNC('year', DATE '2017-01-01')
+    GROUP BY category
+)
+SELECT category, revenue
+FROM revenue_2017
+ORDER BY revenue DESC
+LIMIT 1",
+109,combined,What is the repeat purchase rate among customers in the state of São Paulo?,with_glossary,True,PASS,1.93,1,"WITH orders_per_customer AS (
+    SELECT c.customer_unique_id,
+           COUNT(DISTINCT o.order_id) AS nb_orders
+    FROM orders o
+    JOIN customers c ON o.customer_id = c.customer_id
+    WHERE o.order_status NOT IN ('canceled', 'unavailable')
+      AND c.customer_state = 'SP'
+    GROUP BY c.customer_unique_id
+)
+SELECT AVG(CASE WHEN nb_orders >= 2 THEN 1.0 ELSE 0.0 END) AS repeat_purchase_rate
+FROM orders_per_customer",
+110,combined,What is the average review score of orders that were delivered on time?,with_glossary,True,PASS,1.66,1,"WITH delivered_orders AS (
+    SELECT o.order_id
+    FROM orders o
+    WHERE o.order_status = 'delivered'
+      AND o.order_delivered_customer_date IS NOT NULL
+      AND CAST(o.order_delivered_customer_date AS DATE) <= CAST(o.order_estimated_delivery_date AS DATE)
+)
+SELECT AVG(r.review_score) AS avg_review_score
+FROM reviews r
+WHERE r.order_id IN (SELECT order_id FROM delivered_orders)",

@@ -1,0 +1,127 @@
+# Held-out test set: 10 NEW questions, never used to tune the glossary or the prompts.
+# Rule: run each evaluation ONCE on this file, and never modify the glossary based on these results.
+
+- id: 101
+  level: easy
+  question: How many sellers are located in the state of Rio de Janeiro?
+  gold_sql: |
+    SELECT COUNT(*) AS nb_sellers
+    FROM sellers
+    WHERE seller_state = 'RJ'
+
+- id: 102
+  level: easy
+  question: What share of payments are made with a boleto?
+  gold_sql: |
+    SELECT AVG(CASE WHEN payment_type = 'boleto' THEN 1.0 ELSE 0.0 END) AS boleto_share
+    FROM payments
+
+- id: 103
+  level: business
+  question: What was the average order value in 2017?
+  gold_sql: |
+    SELECT SUM(i.price) / COUNT(DISTINCT o.order_id) AS average_order_value
+    FROM orders o
+    JOIN order_items i ON o.order_id = i.order_id
+    WHERE o.order_status = 'delivered'
+      AND YEAR(o.order_purchase_timestamp) = 2017
+
+- id: 104
+  level: business
+  question: How many orders were canceled in 2018?
+  gold_sql: |
+    SELECT COUNT(*) AS nb_canceled_orders
+    FROM orders
+    WHERE order_status = 'canceled'
+      AND YEAR(order_purchase_timestamp) = 2018
+
+- id: 105
+  level: combined
+  question: What is the median delivery time in days for customers in the state of Rio de Janeiro?
+  gold_sql: |
+    SELECT MEDIAN(DATE_DIFF('day', o.order_purchase_timestamp, o.order_delivered_customer_date)) AS median_delivery_days
+    FROM orders o
+    JOIN customers c ON o.customer_id = c.customer_id
+    WHERE o.order_status = 'delivered'
+      AND o.order_delivered_customer_date IS NOT NULL
+      AND c.customer_state = 'RJ'
+
+- id: 106
+  level: combined
+  question: What share of delivered orders containing at least one bed_bath_table product arrived late?
+  gold_sql: |
+    SELECT AVG(CASE WHEN CAST(o.order_delivered_customer_date AS DATE)
+                       > CAST(o.order_estimated_delivery_date AS DATE)
+                    THEN 1.0 ELSE 0.0 END) AS late_delivery_rate
+    FROM orders o
+    WHERE o.order_status = 'delivered'
+      AND o.order_delivered_customer_date IS NOT NULL
+      AND o.order_id IN (
+          SELECT i.order_id
+          FROM order_items i
+          JOIN products p ON i.product_id = p.product_id
+          JOIN category_translation t ON p.product_category_name = t.product_category_name
+          WHERE t.product_category_name_english = 'bed_bath_table'
+      )
+
+- id: 107
+  level: combined
+  question: What was the revenue in the Southeast region last month?
+  gold_sql: |
+    WITH monthly_orders AS (
+        SELECT DATE_TRUNC('month', order_purchase_timestamp) AS month, COUNT(*) AS nb_orders
+        FROM orders
+        GROUP BY month
+    ),
+    last_complete_month AS (
+        SELECT MAX(month) AS month FROM monthly_orders WHERE nb_orders >= 1000
+    )
+    SELECT SUM(i.price) AS revenue
+    FROM orders o
+    JOIN order_items i ON o.order_id = i.order_id
+    JOIN customers c ON o.customer_id = c.customer_id
+    CROSS JOIN last_complete_month m
+    WHERE DATE_TRUNC('month', o.order_purchase_timestamp) = m.month
+      AND o.order_status = 'delivered'
+      AND c.customer_state IN ('SP', 'RJ', 'MG', 'ES')
+
+- id: 108
+  level: combined
+  question: Which product category generated the most revenue in 2017?
+  gold_sql: |
+    SELECT COALESCE(t.product_category_name_english, p.product_category_name) AS category
+    FROM orders o
+    JOIN order_items i ON o.order_id = i.order_id
+    JOIN products p ON i.product_id = p.product_id
+    LEFT JOIN category_translation t ON p.product_category_name = t.product_category_name
+    WHERE o.order_status = 'delivered'
+      AND YEAR(o.order_purchase_timestamp) = 2017
+    GROUP BY category
+    ORDER BY SUM(i.price) DESC
+    LIMIT 1
+
+- id: 109
+  level: combined
+  question: What is the repeat purchase rate among customers in the state of São Paulo?
+  gold_sql: |
+    WITH orders_per_customer AS (
+        SELECT c.customer_unique_id, COUNT(DISTINCT o.order_id) AS nb_orders
+        FROM orders o
+        JOIN customers c ON o.customer_id = c.customer_id
+        WHERE o.order_status NOT IN ('canceled', 'unavailable')
+          AND c.customer_state = 'SP'
+        GROUP BY c.customer_unique_id
+    )
+    SELECT AVG(CASE WHEN nb_orders >= 2 THEN 1.0 ELSE 0.0 END) AS repeat_purchase_rate
+    FROM orders_per_customer
+
+- id: 110
+  level: combined
+  question: What is the average review score of orders that were delivered on time?
+  gold_sql: |
+    SELECT AVG(r.review_score) AS avg_score
+    FROM orders o
+    JOIN reviews r ON o.order_id = r.order_id
+    WHERE o.order_status = 'delivered'
+      AND o.order_delivered_customer_date IS NOT NULL
+      AND CAST(o.order_delivered_customer_date AS DATE) <= CAST(o.order_estimated_delivery_date AS DATE)

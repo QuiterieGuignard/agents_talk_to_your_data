@@ -98,11 +98,13 @@ def main():
     parser = argparse.ArgumentParser(description="Evaluate the text-to-SQL system.")
     parser.add_argument("--glossary", action="store_true", help="give the business glossary to the LLM")
     parser.add_argument("--agent", action="store_true", help="evaluate the LangGraph agent (always uses the glossary)")
+    parser.add_argument("--questions", default=str(QUESTIONS_PATH), help="YAML file with the test questions")
     parser.add_argument("--check-gold", action="store_true", help="only check that every reference query runs")
     parser.add_argument("--delay", type=float, default=6.0, help="seconds between LLM calls (free-tier rate limit)")
     args = parser.parse_args()
 
-    questions = yaml.safe_load(QUESTIONS_PATH.read_text(encoding="utf-8"))
+    questions_file = Path(args.questions)
+    questions = yaml.safe_load(questions_file.read_text(encoding="utf-8"))    
     con = duckdb.connect(str(DB_PATH), read_only=True)
 
     # Step 1: check that the reference queries themselves are valid
@@ -156,7 +158,8 @@ def main():
 
     results = pd.DataFrame(rows)
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-    output_path = RESULTS_DIR / f"results_{mode}.csv"
+    suffix = "" if questions_file.name == "questions.yaml" else f"_{questions_file.stem}"
+    output_path = RESULTS_DIR / f"results_{mode}{suffix}.csv"
     results.to_csv(output_path, index=False)
 
     print("\n" + "=" * 50)
