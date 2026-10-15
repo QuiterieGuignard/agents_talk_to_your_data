@@ -4,6 +4,7 @@ Usage (from the project root):
     python src/evaluate.py --check-gold     # check that every reference query runs
     python src/evaluate.py                  # evaluate WITHOUT the business glossary
     python src/evaluate.py --glossary       # evaluate WITH the business glossary
+    python src/evaluate.py --agent          # evaluate the LangGraph agent (glossary + check-and-fix loop)
 """
 import argparse
 import math
@@ -15,6 +16,7 @@ import duckdb
 import pandas as pd
 import yaml
 
+from agent import run_agent
 from text_to_sql import DB_PATH, generate_sql
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -80,11 +82,22 @@ def results_match(gold_df, generated_df):
     return False
 
 
+
+# ---------- Getting the SQL (simple chain or agent) ----------
+# only SQL, no response needed for evaluation
+def get_sql(question, con, mode):
+    """Return (sql, number of SQL attempts) for the chosen mode."""
+    if mode == "agent":
+        state = run_agent(question, con, write_answer=False)
+        return state.get("sql", ""), state.get("attempts", 1)
+    return generate_sql(question, con, with_glossary=(mode == "with_glossary")), 1
+
 # ---------- Main ----------
 
 def main():
     parser = argparse.ArgumentParser(description="Evaluate the text-to-SQL system.")
     parser.add_argument("--glossary", action="store_true", help="give the business glossary to the LLM")
+    parser.add_argument("--agent", action="store_true", help="evaluate the LangGraph agent (always uses the glossary)")
     parser.add_argument("--check-gold", action="store_true", help="only check that every reference query runs")
     parser.add_argument("--delay", type=float, default=6.0, help="seconds between LLM calls (free-tier rate limit)")
     args = parser.parse_args()
@@ -103,16 +116,21 @@ def main():
         return
 
     # Step 2: ask every question to the LLM and compare with the expected answer
-    mode = "with_glossary" if args.glossary else "without_glossary"
+    if args.agent:
+        mode = "agent"
+    elif args.glossary:
+        mode = "with_glossary"
+    else:
+        mode = "without_glossary"
+    
     print(f"Evaluating {len(questions)} questions ({mode})...\n")
-
     rows = []
     for q in questions:
         gold_df = con.sql(q["gold_sql"]).df()
-        generated_sql, error, passed = "", "", False
+        generated_sql, error, passed, attempts = "", "", False, 0
         start = time.time()
         try:
-            generated_sql = generate_sql(q["question"], con, with_glossary=args.glossary)
+            generated_sql, attempts = get_sql(q["question"], con, mode)
             generated_df = con.sql(generated_sql).df()
             passed = results_match(gold_df, generated_df)
         except Exception as e:
@@ -120,7 +138,8 @@ def main():
         latency = round(time.time() - start, 2)
 
         status = "PASS" if passed else ("ERROR" if error else "FAIL")
-        print(f"[{status:5}] {q['id']:>2} ({q['level']:8}) {q['question']}")
+        fixed = f"  (fixed after {attempts} attempts)" if attempts > 1 else ""
+        print(f"[{status:5}] {q['id']:>2} ({q['level']:8}) {q['question']}{fixed}")        
         rows.append({
             "id": q["id"],
             "level": q["level"],
@@ -129,6 +148,7 @@ def main():
             "passed": passed,
             "status": status,
             "latency_s": latency,
+            "attempts": attempts,
             "generated_sql": generated_sql,
             "error": error,
         })
